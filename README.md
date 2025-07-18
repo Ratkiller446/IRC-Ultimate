@@ -16,7 +16,7 @@ This project uses a modular Go layout:
 ## Build
 
 ```sh
-cd ~/projects/irc
+cd IRC-ULTIMATE
 
 go build -o irc-client
 ```

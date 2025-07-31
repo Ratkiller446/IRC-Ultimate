@@ -6,12 +6,15 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"math/rand"
 	"os"
 	"os/signal"
 	"os/user"
 	"strings"
 	"time"
 
+	"irc-client/asciiart"
+	"irc-client/asciiart/art"
 	"irc-client/conn"
 	"irc-client/parser"
 )
@@ -27,7 +30,41 @@ func prompt(label, def string) string {
 	return input
 }
 
+// displayKawaiiArt displays a random kawaii art with a message
+func displayKawaiiArt(message string) {
+	// Seed the random number generator
+	rand.Seed(time.Now().UnixNano())
+
+	// Create a collection for our art
+	kawaiiCollection := asciiart.NewCollection("Kawaii IRC")
+
+	// Add some cat art
+	for i, cat := range art.CatFaces {
+		kawaiiCollection.AddArt(fmt.Sprintf("cat_%d", i), cat)
+	}
+
+	// Add some kawaii faces
+	for i, face := range art.KawaiiFaces {
+		kawaiiCollection.AddArt(fmt.Sprintf("face_%d", i), face)
+	}
+
+	// Get terminal width
+	width := asciiart.TerminalWidth()
+
+	// Display the message in a box
+	fmt.Println(asciiart.CenterText("⋆⋅☆⋅⋆ "+message+" ⋆⋅☆⋅⋆", width))
+
+	// Get and display a random piece of art
+	art, err := kawaiiCollection.GetRandom()
+	if err == nil {
+		fmt.Println(asciiart.CenterText(art.Content, width))
+	}
+}
+
 func main() {
+	// Display welcome message with kawaii art
+	displayKawaiiArt("Welcome to Kawaii IRC! (◕‿◕✿)")
+
 	// Defaults
 	defaultPort := 6697
 	defaultTLS := true
@@ -68,6 +105,8 @@ func main() {
 	defer c.Close()
 	if *verbose {
 		logger.Println("Connected!")
+	} else {
+		displayKawaiiArt("Connected to server! (ﾉ◕ヮ◕)ﾉ*:･ﾟ✧")
 	}
 	// Send NICK and USER immediately after connecting
 	fmt.Fprintf(c, "NICK %s\r\n", *nick)

@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"os/user"
 	"strings"
+	"sync"
 	"time"
 
 	"irc-client/asciiart"
@@ -59,6 +60,22 @@ func displayKawaiiArt(message string) {
 	if err == nil {
 		fmt.Println(asciiart.CenterText(art.Content, width))
 	}
+}
+
+var outputMutex sync.Mutex
+
+// safePrintf is a thread-safe wrapper around fmt.Printf
+func safePrintf(format string, a ...interface{}) {
+	outputMutex.Lock()
+	defer outputMutex.Unlock()
+	fmt.Printf(format, a...)
+}
+
+// safePrintln is a thread-safe wrapper around fmt.Println
+func safePrintln(a ...interface{}) {
+	outputMutex.Lock()
+	defer outputMutex.Unlock()
+	fmt.Println(a...)
 }
 
 func main() {
@@ -147,7 +164,7 @@ func main() {
 			if msg.Command == "PING" && len(msg.Params) > 0 {
 				fmt.Fprintf(c, "PONG :%s\r\n", msg.Params[0])
 				if *verbose {
-					logger.Printf("Replied to PING with PONG :%s", msg.Params[0])
+					safePrintf("Replied to PING with PONG :%s\n", msg.Params[0])
 				}
 				continue
 			}
@@ -158,10 +175,10 @@ func main() {
 			}
 			if msg.Command == "PRIVMSG" || msg.Command == "NOTICE" {
 				if len(msg.Params) >= 2 {
-					fmt.Printf("[%s] %s %s\n", timestamp, source, msg.Params[1])
+					safePrintf("[%s] %s %s\n", timestamp, source, msg.Params[1])
 				}
 			} else {
-				fmt.Printf("[%s] %s %s %v\n", timestamp, source, msg.Command, msg.Params)
+				safePrintf("[%s] %s %s %v\n", timestamp, source, msg.Command, msg.Params)
 			}
 		}
 		if err := scanner.Err(); err != nil {
@@ -223,6 +240,10 @@ func main() {
 					if len(fields) > 2 {
 						target := fields[1]
 						msg := strings.Join(fields[2:], " ")
+						// Display the message locally with nickname
+						timestamp := time.Now().Format("2006-01-02 15:04:05")
+						safePrintf("[%s] %s %s\n", timestamp, *nick, msg)
+						// Send the message to the server
 						if _, err := writer.WriteString("PRIVMSG " + target + " :" + msg + "\r\n"); err != nil {
 							fmt.Fprintf(os.Stderr, "[ERROR] Write PRIVMSG: %v\n", err)
 						}
@@ -240,7 +261,12 @@ func main() {
 					return
 				}
 			} else if currentChannel != "" {
-				if _, err := writer.WriteString("PRIVMSG " + currentChannel + " :" + sanitize(line) + "\r\n"); err != nil {
+				msg := sanitize(line)
+				// Display the message locally with nickname
+				timestamp := time.Now().Format("2006-01-02 15:04:05")
+				safePrintf("[%s] %s %s\n", timestamp, *nick, msg)
+				// Send the message to the server
+				if _, err := writer.WriteString("PRIVMSG " + currentChannel + " :" + msg + "\r\n"); err != nil {
 					fmt.Fprintf(os.Stderr, "[ERROR] Write PRIVMSG: %v\n", err)
 				}
 				if err := writer.Flush(); err != nil {
@@ -251,4 +277,4 @@ func main() {
 			return
 		}
 	}
-} 
+}

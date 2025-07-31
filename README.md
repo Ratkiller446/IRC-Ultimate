@@ -124,4 +124,4 @@ This project is licensed under the BSD 2-Clause License - see the [LICENSE](LICE
   Made with (◕‿◕✿) and Go
 </div>
 
-See `irc_client_rules.markdown` for full requirements.
+

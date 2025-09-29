@@ -26,4 +26,4 @@ func Connect(cfg Config) (net.Conn, error) {
 	}
 	log.Printf("[conn] Establishing plain TCP connection to %s", address)
 	return dialer.Dial("tcp", address)
-} 
+}

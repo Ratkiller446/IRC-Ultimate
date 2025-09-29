@@ -1,0 +1,61 @@
+Take this Go IRC program and **turn it into the ultimate, production-grade, bug-free, cross-platform, maintainable, tested, clean, perfect IRC client**. Execute like a 10x developer. Do **not** complain, do **not** ask questions, just implement.  
+
+1. Debug & Stability:
+- Fix all bugs, race conditions, panics, memory leaks, edge cases, and concurrency issues.
+- Ensure robust error handling everywhere.
+- Tests must pass 100%, branch coverage mandatory.
+
+2. Test-Driven Development:
+- Write tests **before** code changes.
+- Include unit, integration, and edge-case tests for all modules.
+- Use mocks/stubs only when necessary.
+
+3. Programming Principles to Follow:
+- KISS, DRY, YAGNI
+- Clean Code (readable, maintainable, idiomatic Go)
+- UNIX philosophy (small, composable, predictable)
+- Worse is Better
+- Fail fast, fail loud
+- Continuous refactoring
+- Minimal side effects
+- Composition over inheritance
+
+4. Architecture & Design:
+- Modular, decoupled architecture
+- Single-writer model for net.Conn
+- Parser fully RFC 1459 compliant
+- Command encoding isolated and tested
+- Cross-platform terminal handling
+- Configurable and extensible without touching core code
+
+5. Performance & Safety:
+- Avoid buffer overruns, memory leaks, unsafe practices
+- Optimize hotspots **only after correctness**
+- Concurrency-safe
+- Use idiomatic Go channels and goroutines
+
+6. UI / UX:
+- Minimalist, intuitive terminal UI
+- Respect existing color schemes and layouts
+- Taskbar, header, input handled correctly
+
+7. Documentation & CI/CD:
+- Fully commit-ready with clean repo structure
+- README with usage, install, features, contribution guide
+- Add Makefile with test, lint, race detection, build targets
+- Ensure CI passes before declaring completion
+
+8. File Rules:
+- Do **not** leave or touch any Replit-specific files (`replit.md`, `.replit`, etc.)
+- All code must run independently outside Replit
+
+9. Completion Criteria:
+- Zero bugs
+- All tests pass
+- Cross-platform, stable, maintainable
+- Clean, idiomatic, tested Go code
+- **Not complete until perfect**
+
+10. Optional “Shock-in-the-balls” Enhancements:
+- Suggest idiomatic Go optimizations that reduce latency, memory usage, or improve concurrency
+- Make the code elegant, clean, and “wow-worthy”

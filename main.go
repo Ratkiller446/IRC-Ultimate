@@ -2,17 +2,18 @@ package main
 
 import (
         "bufio"
-        "context"
+        "crypto/rand"
         "flag"
         "fmt"
         "log"
-        "math/rand"
+        mathrand "math/rand"
         "os"
         "os/signal"
         "os/user"
         "strings"
         "sync"
         "time"
+        "unsafe"
 
         "irc-client/asciiart"
         "irc-client/asciiart/art"
@@ -34,8 +35,13 @@ func prompt(label, def string) string {
 
 // displayKawaiiArt displays a random kawaii art with a message
 func displayKawaiiArt(message string) {
-        // Seed the random number generator
-        rand.Seed(time.Now().UnixNano())
+        // Create a new random source with crypto/rand for security
+        var seed int64
+        if _, err := rand.Read((*[8]byte)(unsafe.Pointer(&seed))[:]); err != nil {
+                // Fallback to time-based seed if crypto/rand fails
+                seed = time.Now().UnixNano()
+        }
+        rng := mathrand.New(mathrand.NewSource(seed))
 
         // Create a collection for our art
         kawaiiCollection := asciiart.NewCollection("Kawaii IRC")
@@ -56,10 +62,17 @@ func displayKawaiiArt(message string) {
         // Display the message in a box
         fmt.Println(asciiart.CenterText("⋆⋅☆⋅⋆ "+message+" ⋆⋅☆⋅⋆", width))
 
-        // Get and display a random piece of art
-        art, err := kawaiiCollection.GetRandom()
-        if err == nil {
-                fmt.Println(asciiart.CenterText(art.Content, width))
+        // Get and display a random piece of art using our secure RNG
+        artCount := len(art.CatFaces) + len(art.KawaiiFaces)
+        if artCount > 0 {
+                randomIndex := rng.Intn(artCount)
+                var selectedArt string
+                if randomIndex < len(art.CatFaces) {
+                        selectedArt = art.CatFaces[randomIndex]
+                } else {
+                        selectedArt = art.KawaiiFaces[randomIndex-len(art.CatFaces)]
+                }
+                fmt.Println(asciiart.CenterText(selectedArt, width))
         }
 }
 
@@ -114,24 +127,34 @@ func main() {
                 Timeout:  10 * time.Second,
                 Insecure: *insecure,
         }
-        c, err := conn.Connect(cfg)
-        if err != nil {
+        
+        // Create connection manager with single-writer pattern
+        connMgr := conn.NewManager(cfg)
+        if err := connMgr.Connect(); err != nil {
                 logger.Printf("Connection error: %v", err)
                 fmt.Fprintf(os.Stderr, "Connection error: %v\n", err)
                 os.Exit(1)
         }
-        defer c.Close()
+        defer connMgr.Close()
         if *verbose {
                 logger.Println("Connected!")
         } else {
                 displayKawaiiArt("Connected to server! (ﾉ◕ヮ◕)ﾉ*:･ﾟ✧")
         }
-        // Send NICK and USER immediately after connecting
-        fmt.Fprintf(c, "NICK %s\r\n", *nick)
-        fmt.Fprintf(c, "USER %s 0 * :%s\r\n", *nick, *nick)
+        // Send NICK and USER immediately after connecting using single-writer pattern
+        if err := connMgr.Write(fmt.Sprintf("NICK %s\r\n", *nick)); err != nil {
+                logger.Printf("Failed to send NICK: %v", err)
+                fmt.Fprintf(os.Stderr, "Failed to send NICK: %v\n", err)
+                os.Exit(1)
+        }
+        if err := connMgr.Write(fmt.Sprintf("USER %s 0 * :%s\r\n", *nick, *nick)); err != nil {
+                logger.Printf("Failed to send USER: %v", err)
+                fmt.Fprintf(os.Stderr, "Failed to send USER: %v\n", err)
+                os.Exit(1)
+        }
 
-        ctx, cancel := context.WithCancel(context.Background())
-        defer cancel()
+        // Use the connection manager's context for coordinated shutdown
+        ctx := connMgr.Context()
 
         sigCh := make(chan os.Signal, 1)
         signal.Notify(sigCh, os.Interrupt)
@@ -141,7 +164,7 @@ func main() {
                 if *verbose {
                         logger.Println("Interrupt received, shutting down...")
                 }
-                cancel()
+                connMgr.Close()
         }()
 
         userInput := make(chan string)
@@ -158,17 +181,32 @@ func main() {
 
         serverDone := make(chan struct{})
         go func() {
-                scanner := bufio.NewScanner(c)
+                defer close(serverDone)
+                scanner := bufio.NewScanner(connMgr.Reader())
                 for scanner.Scan() {
+                        select {
+                        case <-ctx.Done():
+                                return
+                        default:
+                        }
+                        
                         line := scanner.Text()
                         msg := parser.ParseMessage(line)
+                        
+                        // Handle PING using single-writer pattern
                         if msg.Command == "PING" && len(msg.Params) > 0 {
-                                fmt.Fprintf(c, "PONG :%s\r\n", msg.Params[0])
+                                pongMsg := fmt.Sprintf("PONG :%s\r\n", msg.Params[0])
+                                if err := connMgr.Write(pongMsg); err != nil {
+                                        fmt.Fprintf(os.Stderr, "[ERROR] Failed to send PONG: %v\n", err)
+                                        return
+                                }
                                 if *verbose {
                                         safePrintf("Replied to PING with PONG :%s\n", msg.Params[0])
                                 }
                                 continue
                         }
+                        
+                        // Display received messages
                         timestamp := time.Now().Format("2006-01-02 15:04:05")
                         source := msg.Prefix
                         if source == "" {
@@ -185,11 +223,16 @@ func main() {
                 if err := scanner.Err(); err != nil {
                         fmt.Fprintf(os.Stderr, "[ERROR] Server read: %v\n", err)
                 }
-                close(serverDone)
         }()
 
-        writer := bufio.NewWriter(c)
         currentChannel := ""
+        
+        // Monitor connection errors
+        go func() {
+                for err := range connMgr.ErrorChannel() {
+                        fmt.Fprintf(os.Stderr, "[ERROR] Connection: %v\n", err)
+                }
+        }()
         
         for {
                 select {
@@ -241,13 +284,9 @@ func main() {
                                         }
                                 }
                                 
-                                // Send command to server
-                                if _, err := writer.WriteString(ircCmd + "\r\n"); err != nil {
+                                // Send command to server using single-writer pattern
+                                if err := connMgr.Write(ircCmd + "\r\n"); err != nil {
                                         fmt.Fprintf(os.Stderr, "[ERROR] Write %s: %v\n", strings.Fields(ircCmd)[0], err)
-                                        continue
-                                }
-                                if err := writer.Flush(); err != nil {
-                                        fmt.Fprintf(os.Stderr, "[ERROR] Flush %s: %v\n", strings.Fields(ircCmd)[0], err)
                                         continue
                                 }
                                 
